@@ -1,14 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "./supabase.js";
 
-const STAFF = [
-  { name: "Maria G.",  role: "Head Housekeeper",  color: "#7C5CBF", initials: "MG" },
-  { name: "James T.",  role: "Housekeeper",        color: "#2E86AB", initials: "JT" },
-  { name: "Priya S.",  role: "Laundry Specialist", color: "#D4845A", initials: "PS" },
-  { name: "Carlos M.", role: "Housekeeper",         color: "#3BAA73", initials: "CM" },
-  { name: "Aisha K.",  role: "Housekeeper",         color: "#C75B7A", initials: "AK" },
+const STAFF_COLORS = [
+  "#7C5CBF","#2E86AB","#D4845A","#3BAA73","#C75B7A",
+  "#E8553E","#F5A623","#4A90D9","#7ED321","#9B59B6"
 ];
-const STAFF_NAMES = STAFF.map(s => s.name);
 
 const TASK_TEMPLATES = [
   { label: "Room Cleaning",       icon: "🧹" },
@@ -54,46 +50,32 @@ function timeAgo(date) {
   return new Date(date).toLocaleDateString();
 }
 
-function staffColor(name)    { return STAFF.find(s => s.name === name)?.color    || "#888"; }
-function staffInitials(name) { return STAFF.find(s => s.name === name)?.initials || name.slice(0,2).toUpperCase(); }
+function getInitials(name) {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length-1][0]).toUpperCase();
+  return name.slice(0,2).toUpperCase();
+}
 
 function rowToTask(row) {
   return {
-    id:            row.id,
-    title:         row.title,
-    icon:          row.icon,
-    room:          row.room,
-    assignee:      row.assignee,
-    priority:      row.priority,
-    status:        row.status,
-    scheduledDate: row.scheduled_date,
-    notes:         row.notes || "",
-    createdAt:     row.created_at,
-    startedAt:     row.started_at,
-    completedAt:   row.completed_at,
+    id: row.id, title: row.title, icon: row.icon, room: row.room,
+    assignee: row.assignee, priority: row.priority, status: row.status,
+    scheduledDate: row.scheduled_date, notes: row.notes || "",
+    createdAt: row.created_at, startedAt: row.started_at, completedAt: row.completed_at,
   };
 }
 
 function taskToRow(t) {
   return {
-    id:             t.id,
-    title:          t.title,
-    icon:           t.icon,
-    room:           t.room,
-    assignee:       t.assignee,
-    priority:       t.priority,
-    status:         t.status,
-    scheduled_date: t.scheduledDate,
-    notes:          t.notes,
-    created_at:     t.createdAt,
-    started_at:     t.startedAt    || null,
-    completed_at:   t.completedAt  || null,
+    id: t.id, title: t.title, icon: t.icon, room: t.room,
+    assignee: t.assignee, priority: t.priority, status: t.status,
+    scheduled_date: t.scheduledDate, notes: t.notes,
+    created_at: t.createdAt, started_at: t.startedAt || null, completed_at: t.completedAt || null,
   };
 }
 
 function rowsToShifts(rows) {
   const shifts = {};
-  STAFF.forEach(s => { shifts[s.name] = {}; });
   rows.forEach(r => {
     if (!shifts[r.staff_name]) shifts[r.staff_name] = {};
     shifts[r.staff_name][r.shift_date] = { start: r.start_hour, end: r.end_hour };
@@ -116,9 +98,12 @@ const styles = `
   .header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:28px; gap:16px; flex-wrap:wrap; }
   .header-left h1 { font-family:'DM Serif Display',serif; font-size:2.2rem; color:var(--accent); line-height:1.1; }
   .header-left p { color:var(--muted); font-size:0.9rem; margin-top:4px; }
+  .header-right { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   .add-btn { background:var(--accent); color:#fff; border:none; padding:11px 20px; font-family:'DM Sans',sans-serif; font-size:0.88rem; font-weight:600; border-radius:8px; cursor:pointer; transition:all 0.15s; display:flex; align-items:center; gap:7px; white-space:nowrap; }
   .add-btn:hover { background:#1e3a2e; transform:translateY(-1px); }
-  .tabs { display:flex; margin-bottom:24px; border:1.5px solid var(--border); border-radius:10px; overflow:hidden; width:fit-content; }
+  .staff-btn { background:var(--surface); color:var(--accent); border:1.5px solid var(--accent); padding:11px 20px; font-family:'DM Sans',sans-serif; font-size:0.88rem; font-weight:600; border-radius:8px; cursor:pointer; transition:all 0.15s; display:flex; align-items:center; gap:7px; white-space:nowrap; }
+  .staff-btn:hover { background:var(--accent-light); }
+  .tabs { display:flex; margin-bottom:24px; border:1.5px solid var(--border); border-radius:10px; overflow:hidden; width:fit-content; flex-wrap:wrap; }
   .tab { padding:9px 20px; font-family:'DM Sans',sans-serif; font-size:0.87rem; font-weight:500; background:var(--surface); border:none; cursor:pointer; color:var(--muted); transition:all 0.12s; border-right:1.5px solid var(--border); }
   .tab:last-child { border-right:none; }
   .tab.active { background:var(--accent); color:#fff; font-weight:600; }
@@ -180,7 +165,6 @@ const styles = `
   .day-col.is-today .day-task-count { color:rgba(255,255,255,0.6); }
   .day-tasks { padding:8px; display:flex; flex-direction:column; gap:5px; }
   .sched-chip { border-radius:7px; padding:7px 9px; border:1.5px solid var(--border); background:#fff; transition:all 0.12s; }
-  .sched-chip:hover { border-color:var(--accent); transform:translateY(-1px); box-shadow:0 3px 8px rgba(43,76,63,0.09); }
   .sched-chip.status-done { background:#f0faf4; border-color:#b0dfc0; }
   .sched-chip.status-in-progress { background:#f0f6fb; border-color:#b0cfe0; }
   .sched-top { display:flex; align-items:center; gap:5px; margin-bottom:3px; }
@@ -242,6 +226,22 @@ const styles = `
   .ov-legend { display:flex; gap:16px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
   .ov-legend-item { display:flex; align-items:center; gap:5px; font-size:0.75rem; color:var(--muted); }
   .ov-legend-swatch { width:12px; height:12px; border-radius:3px; }
+  .staff-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; margin-bottom:24px; }
+  .staff-card { background:var(--surface); border:1.5px solid var(--border); border-radius:12px; padding:16px; display:flex; align-items:center; gap:12px; transition:all 0.15s; }
+  .staff-card:hover { border-color:var(--accent); box-shadow:0 4px 12px rgba(43,76,63,0.1); }
+  .staff-card-avatar { width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.85rem; font-weight:700; color:#fff; flex-shrink:0; }
+  .staff-card-info { flex:1; }
+  .staff-card-name { font-weight:600; font-size:0.95rem; }
+  .staff-card-role { font-size:0.75rem; color:var(--muted); margin-top:2px; }
+  .staff-card-actions { display:flex; gap:6px; }
+  .icon-btn { width:30px; height:30px; border-radius:6px; border:1.5px solid var(--border); background:none; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:0.85rem; transition:all 0.12s; }
+  .icon-btn:hover { border-color:var(--accent); background:var(--accent-light); }
+  .icon-btn.danger:hover { border-color:#f5c6c2; background:#fdecea; }
+  .add-staff-btn { display:flex; align-items:center; justify-content:center; gap:8px; padding:16px; border:2px dashed var(--border); border-radius:12px; background:none; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:0.88rem; color:var(--muted); transition:all 0.15s; width:100%; }
+  .add-staff-btn:hover { border-color:var(--accent); color:var(--accent); background:var(--accent-light); }
+  .color-picker { display:flex; gap:8px; flex-wrap:wrap; }
+  .color-swatch { width:28px; height:28px; border-radius:50%; border:3px solid transparent; cursor:pointer; transition:all 0.12s; }
+  .color-swatch.selected { border-color:var(--text); transform:scale(1.1); }
   .loading-bar { text-align:center; padding:60px 20px; font-family:'DM Serif Display',serif; font-size:1.4rem; color:var(--accent); }
   .error-banner { background:#fdecea; border:1.5px solid #f5c6c2; border-radius:10px; padding:14px 18px; color:#c0392b; font-size:0.86rem; margin-bottom:20px; }
   .sync-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:#3BAA73; margin-right:6px; animation:pulse 2s infinite; }
@@ -271,8 +271,10 @@ const styles = `
   .save-btn:disabled { background:var(--border); color:var(--muted); cursor:not-allowed; }
   .danger-btn { padding:10px 18px; border-radius:8px; border:1.5px solid #f5c6c2; background:none; font-family:'DM Sans',sans-serif; font-size:0.9rem; cursor:pointer; color:#c0392b; margin-right:auto; }
   .danger-btn:hover { background:#fdecea; }
+  .section-title { font-family:'DM Serif Display',serif; font-size:1.4rem; color:var(--accent); margin-bottom:16px; }
 `;
 export default function App() {
+  const [staff,          setStaff]          = useState([]);
   const [tasks,          setTasks]          = useState([]);
   const [shifts,         setShifts]         = useState({});
   const [loading,        setLoading]        = useState(true);
@@ -283,21 +285,32 @@ export default function App() {
   const [weekAnchor,     setWeekAnchor]     = useState(new Date());
   const [showTaskModal,  setShowTaskModal]  = useState(false);
   const [showShiftModal, setShowShiftModal] = useState(false);
+  const [showStaffModal, setShowStaffModal] = useState(false);
   const [shiftEdit,      setShiftEdit]      = useState(null);
+  const [staffEdit,      setStaffEdit]      = useState(null);
   const [saving,         setSaving]         = useState(false);
 
   const emptyForm = { title:"", icon:"🧹", room:"", assignee:"", priority:"Normal", notes:"", scheduledDate:todayStr, selectedTemplate:null };
   const [form, setForm] = useState(emptyForm);
+  const emptyStaffForm = { name:"", role:"Housekeeper", color:STAFF_COLORS[0] };
+  const [staffForm, setStaffForm] = useState(emptyStaffForm);
+
+  const staffColor    = (name) => staff.find(s => s.name === name)?.color    || "#888";
+  const staffInitials = (name) => staff.find(s => s.name === name)?.initials || getInitials(name);
+  const staffNames    = staff.map(s => s.name);
 
   const loadData = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [{ data: taskRows, error: tErr }, { data: shiftRows, error: sErr }] = await Promise.all([
+      const [{ data: staffRows, error: stErr }, { data: taskRows, error: tErr }, { data: shiftRows, error: sErr }] = await Promise.all([
+        supabase.from("staff").select("*").order("sort_order"),
         supabase.from("tasks").select("*").order("created_at", { ascending: false }),
         supabase.from("shifts").select("*"),
       ]);
+      if (stErr) throw stErr;
       if (tErr) throw tErr;
       if (sErr) throw sErr;
+      setStaff(staffRows || []);
       setTasks((taskRows || []).map(rowToTask));
       setShifts(rowsToShifts(shiftRows || []));
     } catch (e) {
@@ -310,93 +323,103 @@ export default function App() {
   useEffect(() => { loadData(); }, [loadData]);
 
   useEffect(() => {
-    const taskChannel = supabase.channel("tasks-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, payload => {
-        if (payload.eventType === "INSERT") setTasks(prev => [rowToTask(payload.new), ...prev]);
-        else if (payload.eventType === "UPDATE") setTasks(prev => prev.map(t => t.id === payload.new.id ? rowToTask(payload.new) : t));
-        else if (payload.eventType === "DELETE") setTasks(prev => prev.filter(t => t.id !== payload.old.id));
-      }).subscribe();
-    const shiftChannel = supabase.channel("shifts-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "shifts" }, () => {
-        supabase.from("shifts").select("*").then(({ data }) => { if (data) setShifts(rowsToShifts(data)); });
-      }).subscribe();
-    return () => { supabase.removeChannel(taskChannel); supabase.removeChannel(shiftChannel); };
+    const taskCh = supabase.channel("tasks-ch").on("postgres_changes",{event:"*",schema:"public",table:"tasks"},payload=>{
+      if(payload.eventType==="INSERT") setTasks(p=>[rowToTask(payload.new),...p]);
+      else if(payload.eventType==="UPDATE") setTasks(p=>p.map(t=>t.id===payload.new.id?rowToTask(payload.new):t));
+      else if(payload.eventType==="DELETE") setTasks(p=>p.filter(t=>t.id!==payload.old.id));
+    }).subscribe();
+    const shiftCh = supabase.channel("shifts-ch").on("postgres_changes",{event:"*",schema:"public",table:"shifts"},()=>{
+      supabase.from("shifts").select("*").then(({data})=>{ if(data) setShifts(rowsToShifts(data)); });
+    }).subscribe();
+    const staffCh = supabase.channel("staff-ch").on("postgres_changes",{event:"*",schema:"public",table:"staff"},()=>{
+      supabase.from("staff").select("*").order("sort_order").then(({data})=>{ if(data) setStaff(data); });
+    }).subscribe();
+    return ()=>{ supabase.removeChannel(taskCh); supabase.removeChannel(shiftCh); supabase.removeChannel(staffCh); };
   }, []);
 
   async function moveTask(id, to) {
-    const now = new Date().toISOString();
-    const task = tasks.find(t => t.id === id);
-    const updates = { status: to, started_at: to === "in-progress" && !task.startedAt ? now : task.startedAt || null, completed_at: to === "done" ? now : null };
-    setTasks(prev => prev.map(t => t.id !== id ? t : { ...t, status: to, startedAt: updates.started_at, completedAt: updates.completed_at }));
-    const { error } = await supabase.from("tasks").update(updates).eq("id", id);
-    if (error) { setError(error.message); loadData(); }
+    const now=new Date().toISOString(), task=tasks.find(t=>t.id===id);
+    const updates={status:to,started_at:to==="in-progress"&&!task.startedAt?now:task.startedAt||null,completed_at:to==="done"?now:null};
+    setTasks(p=>p.map(t=>t.id!==id?t:{...t,status:to,startedAt:updates.started_at,completedAt:updates.completed_at}));
+    const {error}=await supabase.from("tasks").update(updates).eq("id",id);
+    if(error){setError(error.message);loadData();}
   }
-
   async function deleteTask(id) {
-    setTasks(prev => prev.filter(t => t.id !== id));
-    const { error } = await supabase.from("tasks").delete().eq("id", id);
-    if (error) { setError(error.message); loadData(); }
+    setTasks(p=>p.filter(t=>t.id!==id));
+    const {error}=await supabase.from("tasks").delete().eq("id",id);
+    if(error){setError(error.message);loadData();}
   }
-
-  function openTaskModal(prefillDate, prefillAssignee) {
-    setForm({ ...emptyForm, scheduledDate: prefillDate || todayStr, assignee: prefillAssignee || "" });
-    setShowTaskModal(true);
-  }
-  function selectTemplate(tmpl) { setForm(f => ({ ...f, title: tmpl.label, icon: tmpl.icon, selectedTemplate: tmpl.label })); }
-
-  async function saveTask() {
-    if (!form.title || !form.room || !form.assignee) return;
+  function openTaskModal(prefillDate,prefillAssignee){setForm({...emptyForm,scheduledDate:prefillDate||todayStr,assignee:prefillAssignee||""});setShowTaskModal(true);}
+  function selectTemplate(tmpl){setForm(f=>({...f,title:tmpl.label,icon:tmpl.icon,selectedTemplate:tmpl.label}));}
+  async function saveTask(){
+    if(!form.title||!form.room||!form.assignee)return;
     setSaving(true);
-    const newTask = { id: generateId(), title: form.title, icon: form.icon, room: form.room, assignee: form.assignee, priority: form.priority, status: "pending", scheduledDate: form.scheduledDate, createdAt: new Date().toISOString(), startedAt: null, completedAt: null, notes: form.notes };
-    setShowTaskModal(false);
-    setTasks(prev => [newTask, ...prev]);
-    const { error } = await supabase.from("tasks").insert(taskToRow(newTask));
-    if (error) { setError(error.message); loadData(); }
+    const newTask={id:generateId(),title:form.title,icon:form.icon,room:form.room,assignee:form.assignee,priority:form.priority,status:"pending",scheduledDate:form.scheduledDate,createdAt:new Date().toISOString(),startedAt:null,completedAt:null,notes:form.notes};
+    setShowTaskModal(false);setTasks(p=>[newTask,...p]);
+    const {error}=await supabase.from("tasks").insert(taskToRow(newTask));
+    if(error){setError(error.message);loadData();}
     setSaving(false);
   }
-
-  function openShiftModal(staffName, dateStr) {
-    const existing = shifts[staffName]?.[dateStr];
-    setShiftEdit({ staffName, dateStr, start: existing?.start ?? 8, end: existing?.end ?? 16, exists: !!existing });
+  function openShiftModal(staffName,dateStr){
+    const existing=shifts[staffName]?.[dateStr];
+    setShiftEdit({staffName,dateStr,start:existing?.start??8,end:existing?.end??16,exists:!!existing});
     setShowShiftModal(true);
   }
-
-  async function saveShift() {
-    if (!shiftEdit) return;
-    setSaving(true);
-    setShifts(prev => ({ ...prev, [shiftEdit.staffName]: { ...prev[shiftEdit.staffName], [shiftEdit.dateStr]: { start: shiftEdit.start, end: shiftEdit.end } } }));
+  async function saveShift(){
+    if(!shiftEdit)return; setSaving(true);
+    setShifts(p=>({...p,[shiftEdit.staffName]:{...p[shiftEdit.staffName],[shiftEdit.dateStr]:{start:shiftEdit.start,end:shiftEdit.end}}}));
     setShowShiftModal(false);
-    const { error } = await supabase.from("shifts").upsert({ staff_name: shiftEdit.staffName, shift_date: shiftEdit.dateStr, start_hour: shiftEdit.start, end_hour: shiftEdit.end }, { onConflict: "staff_name,shift_date" });
-    if (error) { setError(error.message); loadData(); }
+    const {error}=await supabase.from("shifts").upsert({staff_name:shiftEdit.staffName,shift_date:shiftEdit.dateStr,start_hour:shiftEdit.start,end_hour:shiftEdit.end},{onConflict:"staff_name,shift_date"});
+    if(error){setError(error.message);loadData();}
     setSaving(false);
   }
-
-  async function deleteShift() {
-    if (!shiftEdit) return;
-    setSaving(true);
-    setShifts(prev => { const copy = { ...prev, [shiftEdit.staffName]: { ...prev[shiftEdit.staffName] } }; delete copy[shiftEdit.staffName][shiftEdit.dateStr]; return copy; });
+  async function deleteShift(){
+    if(!shiftEdit)return; setSaving(true);
+    setShifts(p=>{const c={...p,[shiftEdit.staffName]:{...p[shiftEdit.staffName]}};delete c[shiftEdit.staffName][shiftEdit.dateStr];return c;});
     setShowShiftModal(false);
-    const { error } = await supabase.from("shifts").delete().eq("staff_name", shiftEdit.staffName).eq("shift_date", shiftEdit.dateStr);
-    if (error) { setError(error.message); loadData(); }
+    const {error}=await supabase.from("shifts").delete().eq("staff_name",shiftEdit.staffName).eq("shift_date",shiftEdit.dateStr);
+    if(error){setError(error.message);loadData();}
     setSaving(false);
   }
+  function openStaffModal(member){
+    if(member){setStaffEdit(member);setStaffForm({name:member.name,role:member.role,color:member.color});}
+    else{setStaffEdit(null);setStaffForm(emptyStaffForm);}
+    setShowStaffModal(true);
+  }
+  async function saveStaff(){
+    if(!staffForm.name||!staffForm.role)return; setSaving(true);
+    const initials=getInitials(staffForm.name);
+    if(staffEdit){
+      const {error}=await supabase.from("staff").update({name:staffForm.name,role:staffForm.role,color:staffForm.color,initials}).eq("id",staffEdit.id);
+      if(error)setError(error.message);
+    } else {
+      const {error}=await supabase.from("staff").insert({name:staffForm.name,role:staffForm.role,color:staffForm.color,initials,sort_order:staff.length});
+      if(error)setError(error.message);
+    }
+    setShowStaffModal(false); setSaving(false); loadData();
+  }
+  async function deleteStaff(id){
+    if(!window.confirm("Remove this staff member?"))return;
+    const {error}=await supabase.from("staff").delete().eq("id",id);
+    if(error)setError(error.message); else loadData();
+  }
 
-  const filtered = tasks.filter(t => {
-    if (filterStaff !== "All" && t.assignee !== filterStaff) return false;
-    if (filterPriority !== "All" && t.priority !== filterPriority) return false;
+  const filtered=tasks.filter(t=>{
+    if(filterStaff!=="All"&&t.assignee!==filterStaff)return false;
+    if(filterPriority!=="All"&&t.priority!==filterPriority)return false;
     return true;
   });
-  const colCounts = STATUS_ORDER.reduce((a,s) => { a[s]=filtered.filter(t=>t.status===s).length; return a; }, {});
-  const weekDates = getWeekDates(weekAnchor);
-  function weekLabel() { const s=weekDates[0],e=weekDates[6]; const fmt=d=>d.toLocaleDateString("en-US",{month:"short",day:"numeric"}); return `${fmt(s)} – ${fmt(e)}, ${e.getFullYear()}`; }
-  function shiftWeek(n) { setWeekAnchor(prev => { const d=new Date(prev); d.setDate(d.getDate()+n*7); return d; }); }
-  function weekHours(staffName) { return weekDates.reduce((sum,date) => { const sh=shifts[staffName]?.[toDateStr(date)]; return sum+(sh?sh.end-sh.start:0); }, 0); }
-  function dayTasksFor(staffName, dateStr) { return tasks.filter(t=>t.assignee===staffName&&t.scheduledDate===dateStr); }
-  function dailyHeadcount(dateStr) { return STAFF.filter(s=>shifts[s.name]?.[dateStr]).length; }
+  const colCounts=STATUS_ORDER.reduce((a,s)=>{a[s]=filtered.filter(t=>t.status===s).length;return a;},{});
+  const weekDates=getWeekDates(weekAnchor);
+  function weekLabel(){const s=weekDates[0],e=weekDates[6];const fmt=d=>d.toLocaleDateString("en-US",{month:"short",day:"numeric"});return `${fmt(s)} – ${fmt(e)}, ${e.getFullYear()}`;}
+  function shiftWeek(n){setWeekAnchor(p=>{const d=new Date(p);d.setDate(d.getDate()+n*7);return d;});}
+  function weekHours(sName){return weekDates.reduce((sum,date)=>{const sh=shifts[sName]?.[toDateStr(date)];return sum+(sh?sh.end-sh.start:0);},0);}
+  function dayTasksFor(sName,ds){return tasks.filter(t=>t.assignee===sName&&t.scheduledDate===ds);}
+  function dailyHeadcount(ds){return staff.filter(s=>shifts[s.name]?.[ds]).length;}
 
-  function TaskCard({ task, compact=false }) {
-    const color = staffColor(task.assignee);
-    return compact ? (
+  function TaskCard({task,compact=false}){
+    const color=staffColor(task.assignee);
+    return compact?(
       <div className={`sched-chip status-${task.status}`}>
         <div className="sched-top"><span className="sched-ico">{task.icon}</span><span className="sched-ttl">{task.title}</span><span className="sched-dot" style={{background:PRIORITY_COLORS[task.priority]}}/></div>
         <div className="sched-meta"><span className="sched-room">📍 {task.room}</span><span className="sched-who" style={{background:color}}>{staffInitials(task.assignee)}</span></div>
@@ -406,7 +429,7 @@ export default function App() {
           {task.status==="done"&&<><button className="sched-btn undo" onClick={()=>moveTask(task.id,"in-progress")}>↩ Reopen</button><button className="sched-btn delete" onClick={()=>deleteTask(task.id)}>✕</button></>}
         </div>
       </div>
-    ) : (
+    ):(
       <div className="task-card">
         <div className="task-top"><span className="task-icon">{task.icon}</span><span className="task-title">{task.title}</span><span className="priority-dot" style={{background:PRIORITY_COLORS[task.priority]}}/></div>
         <div className="task-room">📍 {task.room}</div>
@@ -421,9 +444,8 @@ export default function App() {
     );
   }
 
-  if (loading) return (<><style>{styles}</style><div className="loading-bar">Loading Housekeeping...</div></>);
-
-  return (
+  if(loading)return(<><style>{styles}</style><div className="loading-bar">Loading Housekeeping...</div></>);
+  return(
     <>
       <style>{styles}</style>
       <div className="app">
@@ -432,34 +454,57 @@ export default function App() {
             <h1>Housekeeping</h1>
             <p><span className="sync-dot"/>Live sync · {today.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})}</p>
           </div>
-          <button className="add-btn" onClick={()=>openTaskModal()} disabled={saving}>+ Assign Task</button>
+          <div className="header-right">
+            <button className="staff-btn" onClick={()=>setTab("staff")}>👥 Manage Staff</button>
+            <button className="add-btn" onClick={()=>openTaskModal()} disabled={saving}>+ Assign Task</button>
+          </div>
         </div>
         {error&&<div className="error-banner">⚠️ {error} — <button onClick={loadData} style={{background:"none",border:"none",color:"#c0392b",cursor:"pointer",fontWeight:600,textDecoration:"underline"}}>Retry</button></div>}
         <div className="tabs">
-          <button className={`tab ${tab==="overview"?"active":""}`} onClick={()=>setTab("overview")}>👥 Staff Overview</button>
-          <button className={`tab ${tab==="board"?"active":""}`} onClick={()=>setTab("board")}>📋 Task Board</button>
-          <button className={`tab ${tab==="schedule"?"active":""}`} onClick={()=>setTab("schedule")}>📅 Weekly Schedule</button>
+          <button className={`tab ${tab==="overview"?"active":""}`} onClick={()=>setTab("overview")}>👥 Overview</button>
+          <button className={`tab ${tab==="board"?"active":""}`} onClick={()=>setTab("board")}>📋 Tasks</button>
+          <button className={`tab ${tab==="schedule"?"active":""}`} onClick={()=>setTab("schedule")}>📅 Schedule</button>
+          <button className={`tab ${tab==="staff"?"active":""}`} onClick={()=>setTab("staff")}>⚙️ Staff</button>
         </div>
         <div className="stats-bar">
           <div className="stat"><div className="stat-num">{tasks.filter(t=>t.status==="pending").length}</div><div className="stat-label">Pending</div></div>
           <div className="stat"><div className="stat-num">{tasks.filter(t=>t.status==="in-progress").length}</div><div className="stat-label">In Progress</div></div>
           <div className="stat"><div className="stat-num">{tasks.filter(t=>t.status==="done").length}</div><div className="stat-label">Completed</div></div>
-          <div className="stat"><div className="stat-num">{tasks.length}</div><div className="stat-label">Total Tasks</div></div>
+          <div className="stat"><div className="stat-num">{staff.length}</div><div className="stat-label">Staff</div></div>
         </div>
+
+        {tab==="staff"&&(
+          <>
+            <div className="section-title">Staff Members</div>
+            <div className="staff-list">
+              {staff.map(s=>(
+                <div key={s.id} className="staff-card">
+                  <div className="staff-card-avatar" style={{background:s.color}}>{s.initials}</div>
+                  <div className="staff-card-info"><div className="staff-card-name">{s.name}</div><div className="staff-card-role">{s.role}</div></div>
+                  <div className="staff-card-actions">
+                    <button className="icon-btn" onClick={()=>openStaffModal(s)}>✏️</button>
+                    <button className="icon-btn danger" onClick={()=>deleteStaff(s.id)}>🗑️</button>
+                  </div>
+                </div>
+              ))}
+              <button className="add-staff-btn" onClick={()=>openStaffModal(null)}>+ Add Staff Member</button>
+            </div>
+          </>
+        )}
 
         {tab==="overview"&&(
           <>
             <div className="week-nav">
-              <button className="week-nav-btn" onClick={()=>shiftWeek(-1)}>← Prev Week</button>
+              <button className="week-nav-btn" onClick={()=>shiftWeek(-1)}>← Prev</button>
               <button className="week-nav-btn today-btn" onClick={()=>setWeekAnchor(new Date())}>This Week</button>
-              <button className="week-nav-btn" onClick={()=>shiftWeek(1)}>Next Week →</button>
+              <button className="week-nav-btn" onClick={()=>shiftWeek(1)}>Next →</button>
               <span className="week-range">{weekLabel()}</span>
             </div>
             <div className="ov-legend">
               <span style={{fontSize:"0.8rem",color:"var(--muted)",fontWeight:600}}>Legend:</span>
               <div className="ov-legend-item"><div className="ov-legend-swatch" style={{background:"var(--pending)"}}></div>Pending</div>
               <div className="ov-legend-item"><div className="ov-legend-swatch" style={{background:"var(--in-progress)"}}></div>In Progress</div>
-              <div className="ov-legend-item"><div className="ov-legend-swatch" style={{background:"var(--done)"}}></div>Completed</div>
+              <div className="ov-legend-item"><div className="ov-legend-swatch" style={{background:"var(--done)"}}></div>Done</div>
               <div className="ov-legend-item"><div className="ov-legend-swatch" style={{background:"repeating-linear-gradient(45deg,transparent,transparent 3px,rgba(0,0,0,0.06) 3px,rgba(0,0,0,0.06) 6px)"}}></div>Day off</div>
             </div>
             <div className="overview-wrap">
@@ -468,11 +513,11 @@ export default function App() {
                   <div className="ov-header-corner">Staff · {weekDates.filter(d=>dailyHeadcount(toDateStr(d))>0).length} active days</div>
                   {weekDates.map(date=>{const ds=toDateStr(date),isTday=ds===todayStr;return(<div key={ds} className={`ov-day-head${isTday?" is-today":""}`}><div className="ov-day-wday">{date.toLocaleDateString("en-US",{weekday:"short"})}</div><div className="ov-day-date">{date.getDate()}</div><div className="ov-day-sub">{dailyHeadcount(ds)} on shift</div></div>);})}
                 </div>
-                {STAFF.map(s=>(
-                  <div key={s.name} className="ov-staff-row">
+                {staff.map(s=>(
+                  <div key={s.id} className="ov-staff-row">
                     <div className="ov-staff-cell">
                       <div className="ov-avatar" style={{background:s.color}}>{s.initials}</div>
-                      <div><div className="ov-staff-name">{s.name}</div><div className="ov-staff-role">{s.role}</div><div style={{fontSize:"0.68rem",color:s.color,fontWeight:600,marginTop:2}}>{weekHours(s.name)}h this week</div></div>
+                      <div><div className="ov-staff-name">{s.name}</div><div className="ov-staff-role">{s.role}</div><div style={{fontSize:"0.68rem",color:s.color,fontWeight:600,marginTop:2}}>{weekHours(s.name)}h</div></div>
                     </div>
                     {weekDates.map(date=>{
                       const ds=toDateStr(date),isTday=ds===todayStr,shift=shifts[s.name]?.[ds],dtasks=dayTasksFor(s.name,ds);
@@ -497,7 +542,7 @@ export default function App() {
           <>
             <div className="filters">
               <span className="filter-label">Staff:</span>
-              {["All",...STAFF_NAMES].map(s=><button key={s} className={`filter-btn ${filterStaff===s?"active":""}`} onClick={()=>setFilterStaff(s)}>{s}</button>)}
+              {["All",...staffNames].map(s=><button key={s} className={`filter-btn ${filterStaff===s?"active":""}`} onClick={()=>setFilterStaff(s)}>{s}</button>)}
               <span className="filter-label" style={{marginLeft:8}}>Priority:</span>
               {["All",...PRIORITIES].map(p=><button key={p} className={`filter-btn ${filterPriority===p?"active":""}`} onClick={()=>setFilterPriority(p)}>{p}</button>)}
             </div>
@@ -518,14 +563,14 @@ export default function App() {
         {tab==="schedule"&&(
           <>
             <div className="week-nav">
-              <button className="week-nav-btn" onClick={()=>shiftWeek(-1)}>← Prev Week</button>
+              <button className="week-nav-btn" onClick={()=>shiftWeek(-1)}>← Prev</button>
               <button className="week-nav-btn today-btn" onClick={()=>setWeekAnchor(new Date())}>Today</button>
-              <button className="week-nav-btn" onClick={()=>shiftWeek(1)}>Next Week →</button>
+              <button className="week-nav-btn" onClick={()=>shiftWeek(1)}>Next →</button>
               <span className="week-range">{weekLabel()}</span>
             </div>
             <div className="filters">
-              <span className="filter-label">Filter by staff:</span>
-              {["All",...STAFF_NAMES].map(s=><button key={s} className={`filter-btn ${filterStaff===s?"active":""}`} onClick={()=>setFilterStaff(s)}>{s}</button>)}
+              <span className="filter-label">Staff:</span>
+              {["All",...staffNames].map(s=><button key={s} className={`filter-btn ${filterStaff===s?"active":""}`} onClick={()=>setFilterStaff(s)}>{s}</button>)}
             </div>
             <div className="week-grid">
               {weekDates.map(date=>{
@@ -559,7 +604,7 @@ export default function App() {
                 <div className="form-group"><label>Scheduled Date</label><input type="date" value={form.scheduledDate} onChange={e=>setForm(f=>({...f,scheduledDate:e.target.value}))}/></div>
               </div>
               <div className="two-col">
-                <div className="form-group"><label>Assign To</label><select value={form.assignee} onChange={e=>setForm(f=>({...f,assignee:e.target.value}))}><option value="">— Select staff —</option>{STAFF_NAMES.map(s=><option key={s}>{s}</option>)}</select></div>
+                <div className="form-group"><label>Assign To</label><select value={form.assignee} onChange={e=>setForm(f=>({...f,assignee:e.target.value}))}><option value="">— Select staff —</option>{staffNames.map(s=><option key={s}>{s}</option>)}</select></div>
                 <div className="form-group"><label>Priority</label><select value={form.priority} onChange={e=>setForm(f=>({...f,priority:e.target.value}))}>{PRIORITIES.map(p=><option key={p}>{p}</option>)}</select></div>
               </div>
               <div className="form-group"><label>Notes (optional)</label><input value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Any special instructions..."/></div>
@@ -581,17 +626,44 @@ export default function App() {
             </div>
             <div className="modal-body">
               <div className="two-col">
-                <div className="form-group"><label>Shift Start</label><select value={shiftEdit.start} onChange={e=>setShiftEdit(s=>({...s,start:+e.target.value}))}>{HOURS.map(h=><option key={h} value={h}>{fmtHour(h)}</option>)}</select></div>
-                <div className="form-group"><label>Shift End</label><select value={shiftEdit.end} onChange={e=>setShiftEdit(s=>({...s,end:+e.target.value}))}>{HOURS.filter(h=>h>shiftEdit.start).map(h=><option key={h} value={h}>{fmtHour(h)}</option>)}</select></div>
+                <div className="form-group"><label>Start</label><select value={shiftEdit.start} onChange={e=>setShiftEdit(s=>({...s,start:+e.target.value}))}>{HOURS.map(h=><option key={h} value={h}>{fmtHour(h)}</option>)}</select></div>
+                <div className="form-group"><label>End</label><select value={shiftEdit.end} onChange={e=>setShiftEdit(s=>({...s,end:+e.target.value}))}>{HOURS.filter(h=>h>shiftEdit.start).map(h=><option key={h} value={h}>{fmtHour(h)}</option>)}</select></div>
               </div>
               <div style={{background:"var(--accent-light)",borderRadius:8,padding:"10px 14px",fontSize:"0.82rem",color:"var(--accent)"}}>
-                Shift length: <strong>{shiftEdit.end-shiftEdit.start} hours</strong> ({fmtHour(shiftEdit.start)} – {fmtHour(shiftEdit.end)})
+                {shiftEdit.end-shiftEdit.start} hours · {fmtHour(shiftEdit.start)} – {fmtHour(shiftEdit.end)}
               </div>
             </div>
             <div className="modal-footer">
-              {shiftEdit.exists&&<button className="danger-btn" onClick={deleteShift}>Remove Shift</button>}
+              {shiftEdit.exists&&<button className="danger-btn" onClick={deleteShift}>Remove</button>}
               <button className="cancel-btn" onClick={()=>setShowShiftModal(false)}>Cancel</button>
-              <button className="save-btn" onClick={saveShift} disabled={shiftEdit.end<=shiftEdit.start||saving}>{saving?"Saving…":"Save Shift"}</button>
+              <button className="save-btn" onClick={saveShift} disabled={shiftEdit.end<=shiftEdit.start||saving}>{saving?"Saving…":"Save"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showStaffModal&&(
+        <div className="overlay" onClick={e=>e.target===e.currentTarget&&setShowStaffModal(false)}>
+          <div className="modal">
+            <div className="modal-header"><h2>{staffEdit?"Edit Staff Member":"Add Staff Member"}</h2></div>
+            <div className="modal-body">
+              <div className="form-group"><label>Full Name</label><input value={staffForm.name} onChange={e=>setStaffForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Jane S."/></div>
+              <div className="form-group"><label>Role</label><input value={staffForm.role} onChange={e=>setStaffForm(f=>({...f,role:e.target.value}))} placeholder="e.g. Housekeeper"/></div>
+              <div className="form-group">
+                <label>Color</label>
+                <div className="color-picker">
+                  {STAFF_COLORS.map(c=><div key={c} className={`color-swatch${staffForm.color===c?" selected":""}`} style={{background:c}} onClick={()=>setStaffForm(f=>({...f,color:c}))}/>)}
+                </div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--accent-light)",borderRadius:8}}>
+                <div style={{width:36,height:36,borderRadius:"50%",background:staffForm.color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:"0.8rem"}}>{staffForm.name?getInitials(staffForm.name):"?"}</div>
+                <div><div style={{fontWeight:600,fontSize:"0.9rem"}}>{staffForm.name||"Name Preview"}</div><div style={{fontSize:"0.75rem",color:"var(--muted)"}}>{staffForm.role||"Role Preview"}</div></div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              {staffEdit&&<button className="danger-btn" onClick={()=>{deleteStaff(staffEdit.id);setShowStaffModal(false);}}>Remove</button>}
+              <button className="cancel-btn" onClick={()=>setShowStaffModal(false)}>Cancel</button>
+              <button className="save-btn" onClick={saveStaff} disabled={!staffForm.name||!staffForm.role||saving}>{saving?"Saving…":"Save"}</button>
             </div>
           </div>
         </div>
@@ -599,3 +671,4 @@ export default function App() {
     </>
   );
 }
+  
